@@ -12,7 +12,6 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "12345678";
 const RECOVERY_CONTACT =
     process.env.RECOVERY_CONTACT || "با ادمین تماس بگیرید";
 
-
 // ======================================================
 // APP
 // ======================================================
@@ -29,7 +28,6 @@ app.use(express.urlencoded({
 }));
 
 app.use(session({
-
     secret:
         process.env.SESSION_SECRET ||
         "emadnet-change-this-secret",
@@ -44,22 +42,17 @@ app.use(session({
         secure: process.env.NODE_ENV === "production",
         maxAge: 1000 * 60 * 60 * 24 * 7
     }
-
 }));
-
 
 // ======================================================
 // DATA
 // ======================================================
 
 const users = new Map();
-
 const recoveryRequests = [];
-
 const orders = [];
 
 const plans = [
-
     {
         id: 1,
         name: "Starter",
@@ -67,7 +60,6 @@ const plans = [
         days: 30,
         price: 120000
     },
-
     {
         id: 2,
         name: "Pro",
@@ -75,7 +67,6 @@ const plans = [
         days: 90,
         price: 300000
     },
-
     {
         id: 3,
         name: "Max",
@@ -83,38 +74,30 @@ const plans = [
         days: 180,
         price: 520000
     }
-
 ];
-
 
 // ======================================================
 // HELPERS
 // ======================================================
 
 function hashPassword(password) {
+    const salt = crypto.randomBytes(16).toString("hex");
 
-    const salt =
-        crypto.randomBytes(16).toString("hex");
-
-    const hash =
-        crypto.scryptSync(
-            password,
-            salt,
-            64
-        ).toString("hex");
+    const hash = crypto.scryptSync(
+        password,
+        salt,
+        64
+    ).toString("hex");
 
     return `${salt}:${hash}`;
 }
 
-
 function verifyPassword(password, stored) {
-
     if (!stored) {
         return false;
     }
 
-    const parts =
-        stored.split(":");
+    const parts = stored.split(":");
 
     if (parts.length !== 2) {
         return false;
@@ -123,320 +106,208 @@ function verifyPassword(password, stored) {
     const salt = parts[0];
     const original = parts[1];
 
-    const hash =
-        crypto.scryptSync(
-            password,
-            salt,
-            64
-        ).toString("hex");
+    const hash = crypto.scryptSync(
+        password,
+        salt,
+        64
+    ).toString("hex");
 
     return crypto.timingSafeEqual(
         Buffer.from(hash, "hex"),
         Buffer.from(original, "hex")
     );
-
 }
 
-
 function requireLogin(req, res, next) {
-
     if (!req.session.user) {
-
         return res.status(401).json({
             error: "ابتدا وارد حساب خود شوید."
         });
-
     }
 
     next();
-
 }
 
-
 function requireAdmin(req, res, next) {
-
     if (
         !req.session.user ||
         req.session.user.role !== "admin"
     ) {
-
         return res.status(403).json({
             error: "دسترسی ادمین ندارید."
         });
-
     }
 
     next();
-
 }
 
-
 function safeUser(user) {
-
     return {
         id: user.id,
         username: user.username,
         role: user.role
     };
-
 }
-
 
 // ======================================================
 // ADMIN
 // ======================================================
 
 if (!users.has(ADMIN_USER)) {
-
     users.set(ADMIN_USER, {
-
         id: "admin",
-
         username: ADMIN_USER,
-
-        password:
-            hashPassword(ADMIN_PASSWORD),
-
+        password: hashPassword(ADMIN_PASSWORD),
         role: "admin",
-
-        createdAt:
-            new Date().toISOString()
-
+        createdAt: new Date().toISOString()
     });
-
 }
-
 
 // ======================================================
 // AUTH - REGISTER
 // ======================================================
 
 app.post("/api/register", (req, res) => {
+    const username = String(req.body.username || "")
+        .trim()
+        .toLowerCase();
 
-    const username =
-        String(req.body.username || "")
-            .trim()
-            .toLowerCase();
-
-    const password =
-        String(req.body.password || "");
+    const password = String(req.body.password || "");
 
     if (!/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) {
-
         return res.status(400).json({
-            error:
-                "نام کاربری باید ۳ تا ۳۲ کاراکتر باشد."
+            error: "نام کاربری باید ۳ تا ۳۲ کاراکتر باشد."
         });
-
     }
 
     if (password.length < 6) {
-
         return res.status(400).json({
-            error:
-                "رمز عبور حداقل باید ۶ کاراکتر باشد."
+            error: "رمز عبور حداقل باید ۶ کاراکتر باشد."
         });
-
     }
 
     if (users.has(username)) {
-
         return res.status(409).json({
-            error:
-                "این نام کاربری قبلاً ثبت شده است."
+            error: "این نام کاربری قبلاً ثبت شده است."
         });
-
     }
 
     const user = {
-
-        id:
-            crypto.randomUUID(),
-
+        id: crypto.randomUUID(),
         username,
-
-        password:
-            hashPassword(password),
-
+        password: hashPassword(password),
         role: "customer",
-
-        createdAt:
-            new Date().toISOString()
-
+        createdAt: new Date().toISOString()
     };
 
-    users.set(
-        username,
-        user
-    );
+    users.set(username, user);
 
-    req.session.user =
-        safeUser(user);
+    req.session.user = safeUser(user);
 
     res.json({
-
         ok: true,
-
-        user:
-            safeUser(user)
-
+        user: safeUser(user)
     });
-
 });
-
 
 // ======================================================
 // AUTH - LOGIN
 // ======================================================
 
 app.post("/api/login", (req, res) => {
+    const username = String(req.body.username || "")
+        .trim()
+        .toLowerCase();
 
-    const username =
-        String(req.body.username || "")
-            .trim()
-            .toLowerCase();
+    const password = String(req.body.password || "");
 
-    const password =
-        String(req.body.password || "");
-
-    const user =
-        users.get(username);
+    const user = users.get(username);
 
     if (
         !user ||
-        !verifyPassword(
-            password,
-            user.password
-        )
+        !verifyPassword(password, user.password)
     ) {
-
         return res.status(401).json({
-            error:
-                "نام کاربری یا رمز عبور اشتباه است."
+            error: "نام کاربری یا رمز عبور اشتباه است."
         });
-
     }
 
-    req.session.user =
-        safeUser(user);
+    req.session.user = safeUser(user);
 
     res.json({
-
         ok: true,
-
-        user:
-            safeUser(user)
-
+        user: safeUser(user)
     });
-
 });
-
 
 // ======================================================
 // LOGOUT
 // ======================================================
 
 app.post("/api/logout", (req, res) => {
-
     req.session.destroy(() => {
-
         res.json({
             ok: true
         });
-
     });
-
 });
-
 
 // ======================================================
 // CURRENT USER
 // ======================================================
 
 app.get("/api/me", (req, res) => {
-
     if (!req.session.user) {
-
         return res.status(401).json({
             loggedIn: false
         });
-
     }
 
     res.json({
-
         loggedIn: true,
-
-        user:
-            req.session.user
-
+        user: req.session.user
     });
-
 });
-
 
 // ======================================================
 // RECOVERY
 // ======================================================
 
 app.post("/api/recovery", (req, res) => {
-
-    const username =
-        String(req.body.username || "")
-            .trim()
-            .toLowerCase();
+    const username = String(req.body.username || "")
+        .trim()
+        .toLowerCase();
 
     if (!username) {
-
         return res.status(400).json({
-            error:
-                "نام کاربری را وارد کنید."
+            error: "نام کاربری را وارد کنید."
         });
-
     }
 
     recoveryRequests.push({
-
-        id:
-            crypto.randomUUID(),
-
+        id: crypto.randomUUID(),
         username,
-
         status: "pending",
-
-        createdAt:
-            new Date().toISOString()
-
+        createdAt: new Date().toISOString()
     });
 
     res.json({
-
         ok: true,
-
-        message:
-            "درخواست بازیابی برای ادمین ارسال شد.",
-
-        contact:
-            RECOVERY_CONTACT
-
+        message: "درخواست بازیابی برای ادمین ارسال شد.",
+        contact: RECOVERY_CONTACT
     });
-
 });
-
 
 // ======================================================
 // PLANS
 // ======================================================
 
 app.get("/api/plans", (req, res) => {
-
     res.json(plans);
-
 });
 
-
 // ======================================================
-// BUY
+// ORDERS
 // ======================================================
 
 app.post(
@@ -444,64 +315,37 @@ app.post(
     requireLogin,
     (req, res) => {
 
-        const planId =
-            Number(req.body.planId);
+        const planId = Number(req.body.planId);
 
-        const plan =
-            plans.find(
-                item =>
-                    item.id === planId
-            );
+        const plan = plans.find(
+            item => item.id === planId
+        );
 
         if (!plan) {
-
             return res.status(404).json({
-                error:
-                    "این پلن پیدا نشد."
+                error: "این پلن پیدا نشد."
             });
-
         }
 
         const order = {
-
-            id:
-                crypto.randomUUID(),
-
-            userId:
-                req.session.user.id,
-
-            username:
-                req.session.user.username,
-
-            planId:
-                plan.id,
-
-            planName:
-                plan.name,
-
-            price:
-                plan.price,
-
+            id: crypto.randomUUID(),
+            userId: req.session.user.id,
+            username: req.session.user.username,
+            planId: plan.id,
+            planName: plan.name,
+            price: plan.price,
             status: "pending",
-
-            createdAt:
-                new Date().toISOString()
-
+            createdAt: new Date().toISOString()
         };
 
         orders.push(order);
 
         res.json({
-
             ok: true,
-
             order
-
         });
-
     }
 );
-
 
 // ======================================================
 // CUSTOMER DASHBOARD
@@ -512,26 +356,17 @@ app.get(
     requireLogin,
     (req, res) => {
 
-        const myOrders =
-            orders.filter(
-                order =>
-                    order.userId ===
-                    req.session.user.id
-            );
+        const myOrders = orders.filter(
+            order =>
+                order.userId === req.session.user.id
+        );
 
         res.json({
-
-            user:
-                req.session.user,
-
-            orders:
-                myOrders
-
+            user: req.session.user,
+            orders: myOrders
         });
-
     }
 );
-
 
 // ======================================================
 // ADMIN SUMMARY
@@ -547,9 +382,7 @@ app.get(
             users:
                 [...users.values()]
                     .filter(
-                        u =>
-                            u.role ===
-                            "customer"
+                        u => u.role === "customer"
                     ).length,
 
             orders:
@@ -557,16 +390,11 @@ app.get(
 
             recovery:
                 recoveryRequests.filter(
-                    r =>
-                        r.status ===
-                        "pending"
+                    r => r.status === "pending"
                 ).length
-
         });
-
     }
 );
-
 
 // ======================================================
 // ADMIN USERS
@@ -580,17 +408,13 @@ app.get(
         const result =
             [...users.values()]
                 .filter(
-                    u =>
-                        u.role ===
-                        "customer"
+                    u => u.role === "customer"
                 )
                 .map(safeUser);
 
         res.json(result);
-
     }
 );
-
 
 // ======================================================
 // ADMIN ORDERS
@@ -602,10 +426,8 @@ app.get(
     (req, res) => {
 
         res.json(orders);
-
     }
 );
-
 
 // ======================================================
 // ADMIN RECOVERY
@@ -616,13 +438,9 @@ app.get(
     requireAdmin,
     (req, res) => {
 
-        res.json(
-            recoveryRequests
-        );
-
+        res.json(recoveryRequests);
     }
 );
-
 
 // ======================================================
 // ADMIN RESET PASSWORD
@@ -639,99 +457,51 @@ app.post(
                 .toLowerCase();
 
         const newPassword =
-            String(
-                req.body.newPassword || ""
-            );
+            String(req.body.newPassword || "");
 
         const user =
             users.get(username);
 
         if (!user) {
-
             return res.status(404).json({
-                error:
-                    "کاربر پیدا نشد."
+                error: "کاربر پیدا نشد."
             });
-
         }
 
         if (newPassword.length < 6) {
-
             return res.status(400).json({
-                error:
-                    "رمز جدید حداقل ۶ کاراکتر باشد."
+                error: "رمز جدید حداقل ۶ کاراکتر باشد."
             });
-
         }
 
         user.password =
-            hashPassword(
-                newPassword
-            );
+            hashPassword(newPassword);
 
         const request =
             recoveryRequests.find(
                 r =>
-                    r.username ===
-                    username &&
-                    r.status ===
-                    "pending"
+                    r.username === username &&
+                    r.status === "pending"
             );
 
         if (request) {
-
-            request.status =
-                "completed";
-
+            request.status = "completed";
         }
 
         res.json({
-
             ok: true,
-
-            message:
-                "رمز کاربر با موفقیت تغییر کرد."
-
+            message: "رمز کاربر با موفقیت تغییر کرد."
         });
-
     }
 );
 
-
 // ======================================================
-// HEALTH
-// ======================================================
-
-app.get("/health", (req, res) => {
-
-    res.status(200).json({
-
-        status: "ok",
-
-        app: "EmadNet",
-
-        cpu: "2 Core compatible",
-
-        memory: "1GB compatible",
-
-        uptime:
-            Math.floor(
-                process.uptime()
-            )
-
-    });
-
-});
-
-
-// ======================================================
-// FRONTEND
+// HOME PAGE
 // ======================================================
 
 app.get("/", (req, res) => {
 
-res.send(`
-
+    res.send(`
 <!DOCTYPE html>
 
 <html lang="fa" dir="rtl">
@@ -1187,7 +957,6 @@ color:#ff8d99;
 
 </header>
 
-
 <section class="hero">
 
 <h1>
@@ -1207,7 +976,6 @@ onclick="scrollToShop()"
 
 </section>
 
-
 <section
 class="section"
 id="shop"
@@ -1225,9 +993,6 @@ id="plans"
 </div>
 
 </section>
-
-
-<!-- LOGIN -->
 
 <div
 class="modal"
@@ -1288,9 +1053,6 @@ class="message"
 
 </div>
 
-
-<!-- REGISTER -->
-
 <div
 class="modal"
 id="registerModal"
@@ -1349,9 +1111,6 @@ class="message"
 
 </div>
 
-
-<!-- RECOVERY -->
-
 <div
 class="modal"
 id="recoveryModal"
@@ -1397,165 +1156,171 @@ class="message"
 
 </div>
 
-
 <script>
 
 let selectedPlan = null;
 
-
-// =================================
-// LOAD PLANS
-// =================================
-
 async function loadPlans() {
 
-    const response =
-        await fetch("/api/plans");
+    try {
 
-    const plans =
-        await response.json();
+        const response =
+            await fetch("/api/plans");
 
-    const container =
-        document.getElementById("plans");
+        const plans =
+            await response.json();
 
-    container.innerHTML = "";
+        const container =
+            document.getElementById("plans");
 
-    plans.forEach(plan => {
+        container.innerHTML = "";
 
-        const card =
-            document.createElement("div");
+        plans.forEach(function(plan) {
 
-        card.className =
-            "plan";
+            const card =
+                document.createElement("div");
 
-        card.innerHTML = `
+            card.className = "plan";
 
-            <h3>
-                ${plan.name}
-            </h3>
+            card.innerHTML =
+                "<h3>" +
+                    escapeHtml(plan.name) +
+                "</h3>" +
 
-            <div class="info">
+                '<div class="info">' +
 
-                حجم:
-                ${plan.gb}GB
+                    "حجم: " +
+                    escapeHtml(String(plan.gb)) +
+                    "GB<br>" +
 
-                <br>
+                    "مدت: " +
+                    escapeHtml(String(plan.days)) +
+                    " روز" +
 
-                مدت:
-                ${plan.days} روز
+                "</div>" +
 
-            </div>
+                '<div class="price">' +
 
-            <div class="price">
+                    Number(plan.price).toLocaleString() +
+                    " تومان" +
 
-                ${plan.price.toLocaleString()}
-                تومان
+                "</div>" +
 
-            </div>
+                '<button class="buy" onclick="buy(' +
+                    Number(plan.id) +
+                ')">' +
 
-            <button
-                class="buy"
-                onclick="buy(${plan.id})"
-            >
-                خرید این پلن
-            </button>
+                    "خرید این پلن" +
 
-        `;
+                "</button>";
 
-        container.appendChild(card);
+            container.appendChild(card);
 
-    });
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        document.getElementById("plans").textContent =
+            "خطا در دریافت پلن‌ها.";
+
+    }
 
 }
-
-
-// =================================
-// BUY
-// =================================
 
 async function buy(planId) {
 
-    selectedPlan =
-        planId;
+    selectedPlan = planId;
 
-    const me =
-        await fetch("/api/me");
+    try {
 
-    if (!me.ok) {
+        const me =
+            await fetch("/api/me");
 
-        openLogin();
+        if (!me.ok) {
 
-        return;
+            openLogin();
+
+            return;
+
+        }
+
+        const data =
+            await me.json();
+
+        if (!data.loggedIn) {
+
+            openLogin();
+
+            return;
+
+        }
+
+        createOrder(planId);
+
+    } catch (error) {
+
+        alert(
+            "خطا در بررسی حساب کاربری."
+        );
 
     }
-
-    const data =
-        await me.json();
-
-    if (!data.loggedIn) {
-
-        openLogin();
-
-        return;
-
-    }
-
-    createOrder(planId);
 
 }
-
-
-// =================================
-// CREATE ORDER
-// =================================
 
 async function createOrder(planId) {
 
-    const response =
-        await fetch(
-            "/api/orders",
-            {
+    try {
 
-                method:"POST",
+        const response =
+            await fetch(
+                "/api/orders",
+                {
 
-                headers:{
-                    "Content-Type":
-                        "application/json"
-                },
+                    method:"POST",
 
-                body:
-                    JSON.stringify({
-                        planId
-                    })
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    },
 
-            }
-        );
+                    body:
+                        JSON.stringify({
+                            planId: planId
+                        })
 
-    const data =
-        await response.json();
+                }
+            );
 
-    if (!response.ok) {
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            alert(
+                data.error ||
+                "خطا در ثبت سفارش"
+            );
+
+            return;
+
+        }
 
         alert(
-            data.error ||
-            "خطا در ثبت سفارش"
+            "سفارش با موفقیت ثبت شد. شماره سفارش: " +
+            data.order.id
         );
 
-        return;
+    } catch (error) {
+
+        alert(
+            "خطا در ارتباط با سرور."
+        );
 
     }
 
-    alert(
-        "سفارش با موفقیت ثبت شد. شماره سفارش: " +
-        data.order.id
-    );
-
 }
-
-
-// =================================
-// LOGIN
-// =================================
 
 async function login() {
 
@@ -1583,8 +1348,8 @@ async function login() {
 
                 body:
                     JSON.stringify({
-                        username,
-                        password
+                        username: username,
+                        password: password
                     })
 
             }
@@ -1616,7 +1381,7 @@ async function login() {
         true
     );
 
-    setTimeout(() => {
+    setTimeout(function() {
 
         closeModals();
 
@@ -1638,11 +1403,6 @@ async function login() {
     }, 500);
 
 }
-
-
-// =================================
-// REGISTER
-// =================================
 
 async function register() {
 
@@ -1692,8 +1452,8 @@ async function register() {
 
                 body:
                     JSON.stringify({
-                        username,
-                        password
+                        username: username,
+                        password: password
                     })
 
             }
@@ -1720,7 +1480,7 @@ async function register() {
         true
     );
 
-    setTimeout(() => {
+    setTimeout(function() {
 
         closeModals();
 
@@ -1730,11 +1490,6 @@ async function register() {
     }, 500);
 
 }
-
-
-// =================================
-// RECOVERY
-// =================================
 
 async function recovery() {
 
@@ -1762,7 +1517,7 @@ async function recovery() {
 
                 body:
                     JSON.stringify({
-                        username
+                        username: username
                     })
 
             }
@@ -1793,10 +1548,36 @@ async function recovery() {
 
 }
 
+function escapeHtml(value) {
 
-// =================================
-// UI
-// =================================
+    return String(value)
+
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+
+        .replace(
+            /</g,
+            "&lt;"
+        )
+
+        .replace(
+            />/g,
+            "&gt;"
+        )
+
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
 
 function showMessage(
     element,
@@ -1817,7 +1598,6 @@ function showMessage(
 
 }
 
-
 function openLogin() {
 
     closeModals();
@@ -1829,7 +1609,6 @@ function openLogin() {
         .classList.add("show");
 
 }
-
 
 function openRegister() {
 
@@ -1843,7 +1622,6 @@ function openRegister() {
 
 }
 
-
 function openRecovery() {
 
     closeModals();
@@ -1856,20 +1634,19 @@ function openRecovery() {
 
 }
 
-
 function closeModals() {
 
     document
         .querySelectorAll(".modal")
-        .forEach(
-            modal =>
-                modal.classList.remove(
-                    "show"
-                )
-        );
+        .forEach(function(modal) {
+
+            modal.classList.remove(
+                "show"
+            );
+
+        });
 
 }
-
 
 function scrollToShop() {
 
@@ -1881,11 +1658,6 @@ function scrollToShop() {
 
 }
 
-
-// =================================
-// START
-// =================================
-
 loadPlans();
 
 </script>
@@ -1893,11 +1665,9 @@ loadPlans();
 </body>
 
 </html>
-
 `);
 
 });
-
 
 // ======================================================
 // ACCOUNT PAGE
@@ -1908,8 +1678,7 @@ app.get(
     requireLogin,
     (req, res) => {
 
-res.send(`
-
+        res.send(`
 <!DOCTYPE html>
 
 <html lang="fa" dir="rtl">
@@ -1923,7 +1692,9 @@ name="viewport"
 content="width=device-width,initial-scale=1"
 >
 
-<title>حساب من | EmadNet</title>
+<title>
+حساب من | EmadNet
+</title>
 
 <style>
 
@@ -1935,7 +1706,10 @@ background:#080d18;
 
 color:white;
 
-font-family:Tahoma;
+font-family:
+Tahoma,
+Arial,
+sans-serif;
 
 padding:25px;
 
@@ -2032,86 +1806,96 @@ margin-top:10px;
 
 <script>
 
-async function load() {
+function escapeHtml(value) {
 
-    const response =
-        await fetch(
-            "/api/dashboard"
-        );
+return String(value)
 
-    if (!response.ok) {
-
-        location.href="/";
-
-        return;
-
-    }
-
-    const data =
-        await response.json();
-
-    document.getElementById(
-        "user"
-    ).textContent =
-        "نام کاربری: " +
-        data.user.username;
-
-    const container =
-        document.getElementById(
-            "orders"
-        );
-
-    if (!data.orders.length) {
-
-        container.textContent =
-            "هنوز سفارشی ندارید.";
-
-        return;
-
-    }
-
-    container.innerHTML =
-        data.orders.map(
-            order => `
-
-            <div class="order">
-
-                <b>
-                    ${order.planName}
-                </b>
-
-                <br>
-
-                مبلغ:
-                ${order.price.toLocaleString()}
-                تومان
-
-                <br>
-
-                وضعیت:
-                ${order.status}
-
-            </div>
-
-            `
-        ).join("");
+.replace(/&/g,"&amp;")
+.replace(/</g,"&lt;")
+.replace(/>/g,"&gt;")
+.replace(/"/g,"&quot;")
+.replace(/'/g,"&#039;");
 
 }
 
+async function load() {
+
+const response =
+await fetch("/api/dashboard");
+
+if (!response.ok) {
+
+location.href="/";
+
+return;
+
+}
+
+const data =
+await response.json();
+
+document.getElementById(
+"user"
+).textContent =
+"نام کاربری: " +
+data.user.username;
+
+const container =
+document.getElementById(
+"orders"
+);
+
+if (!data.orders.length) {
+
+container.textContent =
+"هنوز سفارشی ندارید.";
+
+return;
+
+}
+
+container.innerHTML =
+data.orders.map(function(order) {
+
+return (
+
+'<div class="order">' +
+
+"<b>" +
+escapeHtml(order.planName) +
+"</b>" +
+
+"<br>" +
+
+"مبلغ: " +
+Number(order.price).toLocaleString() +
+" تومان" +
+
+"<br>" +
+
+"وضعیت: " +
+escapeHtml(order.status) +
+
+"</div>"
+
+);
+
+}).join("");
+
+}
 
 async function logout() {
 
-    await fetch(
-        "/api/logout",
-        {
-            method:"POST"
-        }
-    );
+await fetch(
+"/api/logout",
+{
+method:"POST"
+}
+);
 
-    location.href="/";
+location.href="/";
 
 }
-
 
 load();
 
@@ -2120,12 +1904,10 @@ load();
 </body>
 
 </html>
-
 `);
 
     }
 );
-
 
 // ======================================================
 // ADMIN PAGE
@@ -2136,8 +1918,7 @@ app.get(
     requireAdmin,
     (req, res) => {
 
-res.send(`
-
+        res.send(`
 <!DOCTYPE html>
 
 <html lang="fa" dir="rtl">
@@ -2151,7 +1932,9 @@ name="viewport"
 content="width=device-width,initial-scale=1"
 >
 
-<title>Admin | EmadNet</title>
+<title>
+Admin | EmadNet
+</title>
 
 <style>
 
@@ -2163,7 +1946,10 @@ background:#080d18;
 
 color:white;
 
-font-family:Tahoma;
+font-family:
+Tahoma,
+Arial,
+sans-serif;
 
 padding:25px;
 
@@ -2232,25 +2018,6 @@ cursor:pointer;
 
 }
 
-table {
-
-width:100%;
-
-border-collapse:collapse;
-
-}
-
-td,th {
-
-padding:12px;
-
-border-bottom:
-1px solid #263d60;
-
-text-align:right;
-
-}
-
 input {
 
 padding:12px;
@@ -2265,6 +2032,15 @@ border-radius:8px;
 color:white;
 
 margin:5px;
+
+}
+
+.item {
+
+padding:12px 0;
+
+border-bottom:
+1px solid #263d60;
 
 }
 
@@ -2323,7 +2099,6 @@ id="recovery"
 
 </div>
 
-
 <div class="card">
 
 <h2>
@@ -2335,7 +2110,6 @@ id="recovery"
 </div>
 
 </div>
-
 
 <div class="card">
 
@@ -2350,6 +2124,7 @@ placeholder="نام کاربری"
 
 <input
 id="resetPass"
+type="password"
 placeholder="رمز جدید"
 >
 
@@ -2360,7 +2135,6 @@ onclick="resetPassword()"
 </button>
 
 </div>
-
 
 <div class="card">
 
@@ -2374,7 +2148,6 @@ onclick="resetPassword()"
 
 </div>
 
-
 <button onclick="logout()">
 خروج از پنل
 </button>
@@ -2383,162 +2156,226 @@ onclick="resetPassword()"
 
 <script>
 
-async function loadAdmin() {
+function escapeHtml(value) {
 
-    const summary =
-        await fetch(
-            "/api/admin/summary"
-        );
+return String(value)
 
-    const s =
-        await summary.json();
-
-    document.getElementById(
-        "users"
-    ).textContent =
-        s.users;
-
-    document.getElementById(
-        "orders"
-    ).textContent =
-        s.orders;
-
-    document.getElementById(
-        "recovery"
-    ).textContent =
-        s.recovery;
-
-
-    const recovery =
-        await fetch(
-            "/api/admin/recovery"
-        );
-
-    const recoveryData =
-        await recovery.json();
-
-    document.getElementById(
-        "recoveryList"
-    ).innerHTML =
-        recoveryData.length
-        ?
-        recoveryData.map(
-            item => `
-
-            <p>
-
-            👤
-            ${item.username}
-
-            <br>
-
-            وضعیت:
-            ${item.status}
-
-            </p>
-
-            `
-        ).join("")
-        :
-        "درخواستی وجود ندارد.";
-
-
-    const orders =
-        await fetch(
-            "/api/admin/orders"
-        );
-
-    const ordersData =
-        await orders.json();
-
-    document.getElementById(
-        "ordersList"
-    ).innerHTML =
-        ordersData.length
-        ?
-        ordersData.map(
-            order => `
-
-            <p>
-
-            ${order.username}
-            -
-            ${order.planName}
-
-            <br>
-
-            ${order.price.toLocaleString()}
-            تومان
-
-            </p>
-
-            `
-        ).join("")
-        :
-        "هنوز سفارشی وجود ندارد.";
+.replace(/&/g,"&amp;")
+.replace(/</g,"&lt;")
+.replace(/>/g,"&gt;")
+.replace(/"/g,"&quot;")
+.replace(/'/g,"&#039;");
 
 }
 
+async function loadAdmin() {
+
+try {
+
+const summary =
+await fetch(
+"/api/admin/summary"
+);
+
+if (!summary.ok) {
+
+location.href="/";
+
+return;
+
+}
+
+const s =
+await summary.json();
+
+document.getElementById(
+"users"
+).textContent =
+s.users;
+
+document.getElementById(
+"orders"
+).textContent =
+s.orders;
+
+document.getElementById(
+"recovery"
+).textContent =
+s.recovery;
+
+const recovery =
+await fetch(
+"/api/admin/recovery"
+);
+
+const recoveryData =
+await recovery.json();
+
+document.getElementById(
+"recoveryList"
+).innerHTML =
+
+recoveryData.length
+
+?
+
+recoveryData.map(function(item) {
+
+return (
+
+'<div class="item">' +
+
+"👤 " +
+escapeHtml(item.username) +
+
+"<br>" +
+
+"وضعیت: " +
+escapeHtml(item.status) +
+
+"<br>" +
+
+"زمان: " +
+escapeHtml(item.createdAt) +
+
+"</div>"
+
+);
+
+}).join("")
+
+:
+
+"درخواستی وجود ندارد.";
+
+const orders =
+await fetch(
+"/api/admin/orders"
+);
+
+const ordersData =
+await orders.json();
+
+document.getElementById(
+"ordersList"
+).innerHTML =
+
+ordersData.length
+
+?
+
+ordersData.map(function(order) {
+
+return (
+
+'<div class="item">' +
+
+escapeHtml(order.username) +
+
+" - " +
+
+escapeHtml(order.planName) +
+
+"<br>" +
+
+Number(order.price).toLocaleString() +
+
+" تومان" +
+
+"<br>" +
+
+"وضعیت: " +
+
+escapeHtml(order.status) +
+
+"</div>"
+
+);
+
+}).join("")
+
+:
+
+"هنوز سفارشی وجود ندارد.";
+
+} catch (error) {
+
+console.error(error);
+
+alert(
+"خطا در دریافت اطلاعات پنل مدیریت."
+);
+
+}
+
+}
 
 async function resetPassword() {
 
-    const username =
-        document.getElementById(
-            "resetUser"
-        ).value;
+const username =
+document.getElementById(
+"resetUser"
+).value.trim();
 
-    const newPassword =
-        document.getElementById(
-            "resetPass"
-        ).value;
+const newPassword =
+document.getElementById(
+"resetPass"
+).value;
 
-    const response =
-        await fetch(
-            "/api/admin/reset-password",
-            {
+const response =
+await fetch(
+"/api/admin/reset-password",
+{
 
-                method:"POST",
+method:"POST",
 
-                headers:{
-                    "Content-Type":
-                        "application/json"
-                },
+headers:{
+"Content-Type":
+"application/json"
+},
 
-                body:
-                    JSON.stringify({
-                        username,
-                        newPassword
-                    })
+body:
+JSON.stringify({
+username:username,
+newPassword:newPassword
+})
 
-            }
-        );
+}
+);
 
-    const data =
-        await response.json();
+const data =
+await response.json();
 
-    alert(
-        data.message ||
-        data.error
-    );
+alert(
+data.message ||
+data.error ||
+"عملیات انجام شد."
+);
 
-    loadAdmin();
+if (response.ok) {
+
+document.getElementById(
+"resetPass"
+).value = "";
 
 }
 
+loadAdmin();
+
+}
 
 async function logout() {
 
-    await fetch(
-        "/api/logout",
-        {
-            method:"POST"
-        }
-    );
+await fetch(
+"/api/logout",
+{
+method:"POST"
+}
+);
 
-    location.href="/";
+location.href="/";
 
 }
-
 
 loadAdmin();
 
@@ -2547,12 +2384,10 @@ loadAdmin();
 </body>
 
 </html>
-
 `);
 
     }
 );
-
 
 // ======================================================
 // HEALTH
@@ -2584,7 +2419,6 @@ app.get(
     }
 );
 
-
 // ======================================================
 // 404
 // ======================================================
@@ -2598,7 +2432,6 @@ app.use(
 
     }
 );
-
 
 // ======================================================
 // ERROR HANDLER
@@ -2616,7 +2449,6 @@ app.use(
 
     }
 );
-
 
 // ======================================================
 // START
